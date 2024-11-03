@@ -1,84 +1,93 @@
 import { Hono } from "hono";
+import { db } from "../db";
+import { posts } from "../db/schema";
+import { eq } from "drizzle-orm";
 
-const postsRoute = new Hono();
+const postsRouter = new Hono();
 
-type PostType = {
-  id: number;
-  content: string;
-  date: number;
-};
-
-// Sample posts data
-const posts: PostType[] = [
-  {
-    id: 1,
-    content: "Do only what only you can do.",
-    date: Date.parse("2024-06-24T12:00:00Z"),
-  },
-  {
-    id: 2,
-    content:
-      "Elegance is not a dispensable luxury but a factor that decides between success and failure.",
-    date: Date.parse("2024-06-25T12:00:00Z"),
-  },
-  {
-    id: 3,
-    content:
-      "The question of whether computers can think is like the question of whether submarines can swim.",
-    date: Date.parse("2024-06-26T12:00:00Z"),
-  },
-];
-
-let nextId = 4;
-
-// Read all posts
-postsRoute.get("/posts", (c) => {
-  return c.json(posts);
+// GET all posts
+postsRouter.get("/posts", async (c) => {
+  try {
+    const allPosts = await db.select().from(posts);
+    return c.json(allPosts);
+  } catch (error) {
+    console.error("Error fetching posts:", error);
+    return c.json({ error: "Failed to fetch posts" }, 500);
+  }
 });
 
-// Read a specific post
-postsRoute.get("/posts/:id", (c) => {
+// GET a specific post by ID
+postsRouter.get("/posts/:id", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const post = posts.find((p) => p.id === id);
-  if (post) {
+  try {
+    const post = await db.select().from(posts).where(eq(posts.id, id)).get();
+    if (!post) {
+      return c.json({ error: "Post not found" }, 404);
+    }
     return c.json(post);
+  } catch (error) {
+    console.error(`Error fetching post ${id}:`, error);
+    return c.json({ error: "Failed to fetch post" }, 500);
   }
-  return c.json({ error: "Post not found" }, 404);
 });
 
-// Delete a post
-postsRoute.delete("/posts/:id", (c) => {
+// POST a new post
+postsRouter.post("/posts", async (c) => {
+  const { content } = await c.req.json();
+  try {
+    const newPost = await db
+      .insert(posts)
+      .values({
+        content,
+        date: new Date(),
+      })
+      .returning()
+      .get();
+    return c.json(newPost, 201);
+  } catch (error) {
+    console.error("Error creating post:", error);
+    return c.json({ error: "Failed to create post" }, 500);
+  }
+});
+
+// PATCH (update) a post
+postsRouter.patch("/posts/:id", async (c) => {
   const id = parseInt(c.req.param("id"));
-  const postIndex = posts.findIndex((p) => p.id === id);
-  if (postIndex !== -1) {
-    const deletedPost = posts.splice(postIndex, 1)[0];
+  const { content } = await c.req.json();
+  try {
+    const updatedPost = await db
+      .update(posts)
+      .set({ content })
+      .where(eq(posts.id, id))
+      .returning()
+      .get();
+    if (!updatedPost) {
+      return c.json({ error: "Post not found" }, 404);
+    }
+    return c.json(updatedPost);
+  } catch (error) {
+    console.error(`Error updating post ${id}:`, error);
+    return c.json({ error: "Failed to update post" }, 500);
+  }
+});
+
+// DELETE a post
+postsRouter.delete("/posts/:id", async (c) => {
+  const id = parseInt(c.req.param("id"));
+  try {
+    const deletedPost = await db
+      .delete(posts)
+      .where(eq(posts.id, id))
+      .returning()
+      .get();
+    if (!deletedPost) {
+      return c.json({ error: "Post not found" }, 404);
+    }
     return c.json(deletedPost);
+  } catch (error) {
+    console.error(`Error deleting post ${id}:`, error);
+    return c.json({ error: "Failed to delete post" }, 500);
   }
-  return c.json({ error: "Post not found" }, 404);
 });
 
-// Create a new post
-postsRoute.post("/posts", async (c) => {
-  const { content } = await c.req.json();
-  const newPost = {
-    id: nextId++,
-    content,
-    date: new Date().getTime(),
-  };
-  posts.push(newPost);
-  return c.json(newPost, 201);
-});
-
-// Update a post
-postsRoute.patch("/posts/:id", async (c) => {
-  const id = parseInt(c.req.param("id"));
-  const { content } = await c.req.json();
-  const postIndex = posts.findIndex((p) => p.id === id);
-  if (postIndex !== -1) {
-    posts[postIndex] = { ...posts[postIndex], content };
-    return c.json(posts[postIndex]);
-  }
-  return c.json({ error: "Post not found" }, 404);
-});
-
-export default postsRoute; 
+export default postsRouter; 
