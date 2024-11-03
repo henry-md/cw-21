@@ -1,5 +1,7 @@
 import { db, connection } from "./index.js";
 import { posts } from "./schema.js";
+import { faker } from "@faker-js/faker";
+import { sql } from "drizzle-orm";
 
 async function seed() {
   console.log("Seeding the database...");
@@ -8,33 +10,41 @@ async function seed() {
   console.log("Cleaning existing data...");
   await db.delete(posts);
 
+  // Reset the auto-increment counters
+  await db.run(sql`DELETE FROM sqlite_sequence WHERE name IN ('posts')`);
+
   console.log("Inserting new seed data...");
-  // Insert sample posts
-  const [post1] = await db
-    .insert(posts)
-    .values({
-      content: "Do only what only you can do.",
-      date: new Date(),
-    })
-    .returning({ id: posts.id });
 
-  const [post2] = await db
-    .insert(posts)
-    .values({
-      content:
-        "Elegance is not a dispensable luxury but a factor that decides between success and failure.",
-      date: new Date(),
-    })
-    .returning({ id: posts.id });
+  const sampleKeywords = [
+    "technology",
+    "innovation",
+    "design",
+    "development",
+    "programming",
+    "software",
+    "hardware",
+    "AI",
+    "machine learning",
+    "data science",
+    "cloud computing",
+    "cybersecurity",
+  ];
 
-  const [post3] = await db
-    .insert(posts)
-    .values({
-      content:
-        "The question of whether computers can think is like the question of whether submarines can swim.",
-      date: new Date(),
-    })
-    .returning({ id: posts.id });
+  // Insert 100 sample posts
+  for (let i = 0; i < 100; i++) {
+    const randomKeywords = faker.helpers.arrayElements(sampleKeywords, {
+      min: 1,
+      max: 3,
+    });
+    const content = `${faker.lorem.sentence({ min: 10, max: 200 })} ${randomKeywords.join(" ")}`;
+
+    await db.insert(posts).values({
+      content,
+      date: faker.date.recent({
+        days: 5, // The range of days the date may be in the past.
+      }), // Generates a random date in the recent past.
+    });
+  }
 
   console.log("Seeding completed successfully.");
 }
